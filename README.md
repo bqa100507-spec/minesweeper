@@ -59,12 +59,19 @@ The project follows a 3-layer architecture:
 - **Tkinter**: Usually built-in with standard Python installations.
 
 ### Execution
-Run the main entry point:
 ```bash
 python main.py
 ```
 
-## 5. Technical Highlights
+## 5. Documentation
+
+The project includes automatically generated API documentation using `pdoc`.
+To view the docstrings and understand the project's codebase:
+1. Navigate to the `docs/` folder in the repository.
+2. Open the `index.html` or `minesweeper.html` file in any web browser (Chrome, Edge, Firefox, etc.).
+3. Browse the documented classes, methods, and modules.
+
+## 6. Technical Highlights
 
 - **Time Complexity**:
   - **Setup**: O(M*N)
