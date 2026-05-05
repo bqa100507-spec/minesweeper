@@ -21,6 +21,16 @@ class GameManager:
         self.game_won = False
         self.solver = MinesweeperSolver()
 
+    def reset_game(self, board):
+        """
+        Reset the game manager with a new board state.
+        """
+        self.board = board
+        self.history = Stack()
+        self.game_over = False
+        self.game_won = False
+        self.solver = MinesweeperSolver()
+
     def save_state(self):
         """
         Save the current board state to the history stack for undo functionality.
