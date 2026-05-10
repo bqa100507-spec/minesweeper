@@ -10,12 +10,15 @@ class MinesweeperGUI:
     """
     Tkinter-based GUI for playing Minesweeper.
     """
-    def __init__(self, game_manager):
+    def __init__(self, game_manager, network_manager=None):
         """
-        Initialize the GUI with the provided game manager.
+        Initialize the GUI with the provided game manager and optional network manager.
         """
         self.game_manager = game_manager
         self.board = game_manager.board
+        self.network_manager = network_manager
+        self.is_host = network_manager.is_host if network_manager else True
+
         
         self.root = tk.Tk()
         self.root.title("Minesweeper")
@@ -47,6 +50,16 @@ class MinesweeperGUI:
         
         self.create_grid_widgets()
         
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+        
+        if self.network_manager:
+            self.root.after(100, self.process_network_events)
+            if self.is_host:
+                self.root.title("Minesweeper (Host)")
+            else:
+                self.root.title("Minesweeper (Client)")
+
+        
     def create_menu(self):
         """
         Create the application menu bar including game difficulty options.
@@ -77,10 +90,31 @@ class MinesweeperGUI:
                 row_buttons.append(btn)
             self.buttons.append(row_buttons)
             
-    def new_game(self, rows, cols, num_mines):
+    def new_game(self, rows, cols, num_mines, seed=None):
         """
         Start a new game with the specified board dimensions and mine count.
         """
+        if self.network_manager:
+            if not self.is_host:
+                messagebox.showinfo("Info", "Only the host can start a new game.")
+                return
+            import random
+            seed = random.randint(0, 1000000)
+            # Pick a random starting cell for both players
+            start_x = random.randint(0, rows - 1)
+            start_y = random.randint(0, cols - 1)
+            self.network_manager.send_message({'type': 'INIT_GAME', 'rows': rows, 'cols': cols, 'mines': num_mines, 'seed': seed, 'start_x': start_x, 'start_y': start_y})
+            
+        self._start_game(rows, cols, num_mines, seed, start_x if self.network_manager else None, start_y if self.network_manager else None)
+
+    def _start_game(self, rows, cols, num_mines, seed=None, start_x=None, start_y=None):
+        """
+        Internal method to handle the actual starting of a game.
+        """
+        if seed is not None:
+            import random
+            random.seed(seed)
+            
         self.timer_running = False
         if self.timer_id:
             self.root.after_cancel(self.timer_id)
@@ -96,6 +130,11 @@ class MinesweeperGUI:
             
         self.buttons = []
         self.create_grid_widgets()
+        
+        if start_x is not None and start_y is not None:
+            # Automatically reveal the starting cell for identical boards
+            self.game_manager.handle_left_click(start_x, start_y)
+            
         self.update_gui()
 
     def show_custom_dialog(self):
@@ -226,8 +265,12 @@ class MinesweeperGUI:
         self.check_timer_state()
                         
         if self.game_manager.game_over:
+            if self.network_manager:
+                self.network_manager.send_message({'type': 'OPPONENT_LOST'})
             messagebox.showinfo("Game Over", "You hit a mine!\nPress Undo to try again.")
         elif self.game_manager.game_won:
+            if self.network_manager:
+                self.network_manager.send_message({'type': 'OPPONENT_WON'})
             messagebox.showinfo("Congratulations", f"You won in {self.timer_seconds} seconds!")
             
     def on_left_click(self, x, y):
@@ -281,6 +324,48 @@ class MinesweeperGUI:
         
         if action_taken and not self.game_manager.game_over and not self.game_manager.game_won:
             self.root.after(600, self.auto_solve_loop)
+            
+    def process_network_events(self):
+        """
+        Poll and process events from the network manager.
+        """
+        if not self.network_manager:
+            return
+            
+        while not self.network_manager.event_queue.empty():
+            event = self.network_manager.event_queue.get()
+            event_type = event.get('type')
+            
+            if event_type == 'INIT_GAME':
+                self._start_game(event['rows'], event['cols'], event['mines'], event['seed'], event.get('start_x'), event.get('start_y'))
+            elif event_type == 'OPPONENT_WON':
+                messagebox.showinfo("Network", "The other player has won the game! Try to beat their time.")
+            elif event_type == 'OPPONENT_LOST':
+                messagebox.showinfo("Network", "The other player hit a mine! You can take your time to win.")
+            elif event_type == 'ERROR':
+                messagebox.showerror("Network Error", event.get('msg'))
+            elif event_type == 'CONNECTED':
+                if self.is_host:
+                    import random
+                    seed = random.randint(0, 1000000)
+                    start_x = random.randint(0, self.board.rows - 1)
+                    start_y = random.randint(0, self.board.cols - 1)
+                    self.network_manager.send_message({'type': 'INIT_GAME', 'rows': self.board.rows, 'cols': self.board.cols, 'mines': self.board.num_mines, 'seed': seed, 'start_x': start_x, 'start_y': start_y})
+                    self._start_game(self.board.rows, self.board.cols, self.board.num_mines, seed, start_x, start_y)
+                else:
+                    messagebox.showinfo("Network", "Connected to host. Waiting for game start...")
+            elif event_type == 'DISCONNECTED':
+                messagebox.showwarning("Network", "Disconnected from peer.")
+                
+        self.root.after(100, self.process_network_events)
+
+    def on_close(self):
+        """
+        Handle window close event.
+        """
+        if self.network_manager:
+            self.network_manager.stop()
+        self.root.destroy()
             
     def run(self):
         """

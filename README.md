@@ -27,6 +27,8 @@ The project follows a 3-layer architecture:
   - **Responsibilities**: Analyzes board state, identifies patterns, and executes solving algorithms.
 - **`game_manager.py`**: Orchestrates the game flow.
   - **Features**: Win/Loss detection, Mine counting, Step tracking.
+- **`network.py`**: Handles local multiplayer connections.
+  - **Features**: TCP socket server/client, asynchronous message queuing, deterministic board synchronization.
 
 ### 2.3. User Interface Layer (`ui/`)
 
@@ -45,6 +47,11 @@ The project follows a 3-layer architecture:
 - **Timer**: Tracks elapsed time in seconds.
 - **Hint**: Suggests the safest next move by color-coding cells (Green = Safe, Red = Mine, Yellow = Best Guess).
 - **Undo**: Reverts the board to the previous state.
+- **Multiplayer (Competitive Race)**: 
+  - Play against friends on identical boards over a Local Area Network (LAN).
+  - Built-in TCP socket communication (Host/Join).
+  - The starting cell and mine placements are perfectly synchronized using random seeds, ensuring fairness.
+  - Automatically notifies the other player when someone wins or hits a mine.
 
 ### AI (Solver) Features
 - **Pattern Recognition**: Identifies logical patterns to deduce cell states.
