@@ -11,6 +11,7 @@ class Queue:
         Initialize an empty queue.
         """
         self.items = []
+        self.head = 0
         
     def enqueue(self, item):
         """
@@ -24,7 +25,9 @@ class Queue:
         Returns None if the queue is empty.
         """
         if not self.is_empty():
-            return self.items.pop(0)
+            item = self.items[self.head]
+            self.head += 1
+            return item
         return None
         
     def is_empty(self):
@@ -32,4 +35,4 @@ class Queue:
         Check if the queue is empty.
         Returns True if empty, False otherwise.
         """
-        return len(self.items) == 0
+        return self.head >= len(self.items)

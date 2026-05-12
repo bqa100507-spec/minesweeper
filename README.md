@@ -44,14 +44,18 @@ The project follows a 3-layer architecture:
 - **4 Difficulty Levels**: Easy (10 mines), Medium (40 mines), Hard (99 mines), and Custom.
 - **Left-Click**: Reveal cell.
 - **Right-Click**: Flag cell.
-- **Timer**: Tracks elapsed time in seconds.
+- **Middle-Click / Double-Click (Chording)**: Instantly reveals all surrounding unflagged cells if the adjacent flagged count matches the cell's number.
+- **Timer & Flag Counter**: Tracks elapsed time and remaining mines to flag.
+- **Leaderboard**: Automatically saves best completion times locally for Easy, Medium, and Hard modes (`leaderboard.json`).
+- **Dark Mode**: Toggleable dark theme for a modern visual experience.
+- **Sound Effects**: Immersive audio feedback for interactions and game events (uses Windows `winsound`).
 - **Hint**: Suggests the safest next move by color-coding cells (Green = Safe, Red = Mine, Yellow = Best Guess).
-- **Undo**: Reverts the board to the previous state.
+- **Undo**: Reverts the board to the previous state using a custom Stack data structure.
 - **Multiplayer (Competitive Race)**: 
   - Play against friends on identical boards over a Local Area Network (LAN).
-  - Built-in TCP socket communication (Host/Join).
-  - The starting cell and mine placements are perfectly synchronized using random seeds, ensuring fairness.
-  - Automatically notifies the other player when someone wins or hits a mine.
+  - Built-in TCP socket communication (Host/Join) with synchronized seeds.
+  - **Live Opponent Progress**: Shows real-time percentage of safe cells revealed by the opponent.
+  - **Rematch System**: Instantly request and accept rematches without disconnecting.
 
 ### AI (Solver) Features
 - **Pattern Recognition**: Identifies logical patterns to deduce cell states.
@@ -80,10 +84,17 @@ To view the docstrings and understand the project's codebase:
 
 ## 6. Technical Highlights
 
+- **Data Structures**:
+  - **Stack**: Used for the `Undo` functionality.
+  - **Queue**: Optimized `O(1)` dequeue operations using a head-pointer approach for BFS algorithms.
+  - **Graph**: 2D Grid representing the game board.
+- **Algorithms**:
+  - **Breadth-First Search (BFS)**: Efficient flood-fill algorithm for revealing empty safe zones.
+  - **Entropy & Backtracking**: Core AI logic solver.
 - **Time Complexity**:
   - **Setup**: O(M*N)
   - **Reveal (Normal)**: O(1)
   - **Reveal (Flood Fill)**: O(M*N)
-  - **Solve (Entropy)**: Dominated by the number of unrevealed cells and patterns, highly efficient for standard boards.
+  - **Chording**: O(1) (checks 8 adjacent cells)
 - **Space Complexity**: O(M*N) for storing the board state.
 - **Modularity**: The solver algorithms can be tested independently of the GUI by mocking the `Board` object.

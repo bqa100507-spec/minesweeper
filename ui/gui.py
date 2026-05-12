@@ -5,6 +5,26 @@ Graphical User Interface for the Minesweeper game using Tkinter.
 import tkinter as tk
 from tkinter import messagebox
 from models.board import Board
+import json
+import os
+
+try:
+    import winsound
+    HAS_WINSOUND = True
+except ImportError:
+    HAS_WINSOUND = False
+
+def play_sound(sound_type):
+    if not HAS_WINSOUND: return
+    if sound_type == "click":
+        winsound.Beep(500, 50)
+    elif sound_type == "flag":
+        winsound.Beep(800, 100)
+    elif sound_type == "mine":
+        winsound.Beep(200, 500)
+    elif sound_type == "win":
+        winsound.Beep(1000, 500)
+
 
 class MinesweeperGUI:
     """
@@ -18,6 +38,12 @@ class MinesweeperGUI:
         self.board = game_manager.board
         self.network_manager = network_manager
         self.is_host = network_manager.is_host if network_manager else True
+        self.dark_mode = False
+        self.bg_color = "SystemButtonFace"
+        self.fg_color = "black"
+        self._played_over_sound = False
+        self._played_win_sound = False
+
 
         
         self.root = tk.Tk()
@@ -36,6 +62,8 @@ class MinesweeperGUI:
         hint_btn.pack(side=tk.LEFT, padx=5)
         
         auto_btn = tk.Button(self.top_frame, text="Auto Solve", command=self.start_auto_solve)
+        if self.network_manager:
+            auto_btn.config(state=tk.DISABLED)
         auto_btn.pack(side=tk.LEFT, padx=5)
         
         self.timer_seconds = 0
@@ -44,6 +72,13 @@ class MinesweeperGUI:
         
         self.timer_label = tk.Label(self.top_frame, text="Time: 000", font=("Arial", 12, "bold"))
         self.timer_label.pack(side=tk.RIGHT, padx=10)
+        
+        self.flag_label = tk.Label(self.top_frame, text="Flags: 0", font=("Arial", 12, "bold"), fg="red")
+        self.flag_label.pack(side=tk.RIGHT, padx=10)
+        
+        if self.network_manager:
+            self.opp_progress_label = tk.Label(self.top_frame, text="Opponent: 0%", font=("Arial", 10), fg="blue")
+            self.opp_progress_label.pack(side=tk.RIGHT, padx=10)
         
         self.grid_frame = tk.Frame(self.root)
         self.grid_frame.pack(padx=10, pady=10)
@@ -74,7 +109,57 @@ class MinesweeperGUI:
         game_menu.add_command(label="New Game (Hard)", command=lambda: self.new_game(16, 30, 99))
         game_menu.add_command(label="Custom...", command=self.show_custom_dialog)
         game_menu.add_separator()
+        game_menu.add_command(label="Leaderboard", command=self.show_leaderboard)
+        game_menu.add_command(label="Toggle Dark Mode", command=self.toggle_dark_mode)
+        game_menu.add_separator()
         game_menu.add_command(label="Exit", command=self.root.quit)
+
+    def toggle_dark_mode(self):
+        self.dark_mode = not self.dark_mode
+        self.bg_color = "#2d2d2d" if self.dark_mode else "SystemButtonFace"
+        self.fg_color = "white" if self.dark_mode else "black"
+        self.root.config(bg=self.bg_color)
+        self.top_frame.config(bg=self.bg_color)
+        self.grid_frame.config(bg=self.bg_color)
+        self.timer_label.config(bg=self.bg_color, fg=self.fg_color)
+        self.flag_label.config(bg=self.bg_color)
+        if hasattr(self, 'opp_progress_label'):
+            self.opp_progress_label.config(bg=self.bg_color)
+        self.update_gui()
+
+    def load_leaderboard(self):
+        if os.path.exists("leaderboard.json"):
+            with open("leaderboard.json", "r") as f:
+                return json.load(f)
+        return {"Easy": None, "Medium": None, "Hard": None}
+
+    def save_leaderboard(self, lb):
+        with open("leaderboard.json", "w") as f:
+            json.dump(lb, f)
+
+    def show_leaderboard(self):
+        lb = self.load_leaderboard()
+        msg = "Leaderboard - Best Times:\n\n"
+        for diff, time in lb.items():
+            msg += f"{diff}: {time + ' seconds' if time else 'N/A'}\n"
+        messagebox.showinfo("Leaderboard", msg)
+
+    def save_score(self):
+        lb = self.load_leaderboard()
+        diff = None
+        if self.board.rows == 9 and self.board.cols == 9 and self.board.num_mines == 10:
+            diff = "Easy"
+        elif self.board.rows == 16 and self.board.cols == 16 and self.board.num_mines == 40:
+            diff = "Medium"
+        elif self.board.rows == 16 and self.board.cols == 30 and self.board.num_mines == 99:
+            diff = "Hard"
+            
+        if diff:
+            best = lb.get(diff)
+            if best is None or self.timer_seconds < int(best):
+                lb[diff] = str(self.timer_seconds)
+                self.save_leaderboard(lb)
+                messagebox.showinfo("New Record!", f"You set a new best time for {diff}: {self.timer_seconds}s!")
 
     def create_grid_widgets(self):
         """
@@ -86,6 +171,8 @@ class MinesweeperGUI:
                 btn = tk.Button(self.grid_frame, width=3, height=1, font=('Arial', 10, 'bold'))
                 btn.bind("<Button-1>", lambda e, x=r, y=c: self.on_left_click(x, y))
                 btn.bind("<Button-3>", lambda e, x=r, y=c: self.on_right_click(x, y))
+                btn.bind("<Button-2>", lambda e, x=r, y=c: self.on_middle_click(x, y))
+                btn.bind("<Double-Button-1>", lambda e, x=r, y=c: self.on_middle_click(x, y))
                 btn.grid(row=r, column=c)
                 row_buttons.append(btn)
             self.buttons.append(row_buttons)
@@ -129,6 +216,8 @@ class MinesweeperGUI:
             widget.destroy()
             
         self.buttons = []
+        self._played_over_sound = False
+        self._played_win_sound = False
         self.create_grid_widgets()
         
         if start_x is not None and start_y is not None:
@@ -236,24 +325,32 @@ class MinesweeperGUI:
         """
         Update the visual state of all buttons on the board to reflect the current game state.
         """
+        flags_placed = 0
+        safe_revealed = 0
+        total_safe = self.board.rows * self.board.cols - self.board.num_mines
+        
         for r in range(self.board.rows):
             for c in range(self.board.cols):
                 cell = self.board.grid[r][c]
                 btn = self.buttons[r][c]
                 
+                if cell.is_flagged: flags_placed += 1
+                if cell.is_revealed and not cell.is_mine: safe_revealed += 1
+                
                 if cell.is_revealed:
-                    btn.config(relief=tk.SUNKEN, state=tk.DISABLED, bg="#d3d3d3")
+                    bg_col = "#1e1e1e" if self.dark_mode else "#d3d3d3"
+                    btn.config(relief=tk.SUNKEN, state=tk.DISABLED, bg=bg_col)
                     if cell.is_mine:
                         btn.config(text="*", disabledforeground="red")
                     elif cell.adjacent_mines > 0:
-                        colors = ["", "blue", "green", "red", "purple", "maroon", "turquoise", "black", "gray"]
-                        color = colors[cell.adjacent_mines] if cell.adjacent_mines < len(colors) else "black"
+                        colors = ["", "blue", "green", "red", "purple", "maroon", "turquoise", "white" if self.dark_mode else "black", "gray"]
+                        color = colors[cell.adjacent_mines] if cell.adjacent_mines < len(colors) else ("white" if self.dark_mode else "black")
                         btn.config(text=str(cell.adjacent_mines), disabledforeground=color)
                     else:
                         btn.config(text="")
                 else:
                     if btn.cget("bg") not in ["lightgreen", "lightcoral", "lightyellow"]:
-                        btn.config(state=tk.NORMAL, relief=tk.RAISED, bg="SystemButtonFace")
+                        btn.config(state=tk.NORMAL, relief=tk.RAISED, bg=self.bg_color)
                     else:
                         btn.config(state=tk.NORMAL, relief=tk.RAISED)
                         
@@ -262,25 +359,46 @@ class MinesweeperGUI:
                     else:
                         btn.config(text="")
                         
+        self.flag_label.config(text=f"Flags: {self.board.num_mines - flags_placed}")
+        
+        if self.network_manager:
+            progress_pct = int((safe_revealed / total_safe) * 100) if total_safe > 0 else 0
+            self.network_manager.send_message({'type': 'PROGRESS', 'progress': progress_pct})
+            
         self.check_timer_state()
                         
-        if self.game_manager.game_over:
+        if self.game_manager.game_over and not self._played_over_sound:
+            self._played_over_sound = True
+            play_sound('mine')
             if self.network_manager:
                 self.network_manager.send_message({'type': 'OPPONENT_LOST'})
-            messagebox.showinfo("Game Over", "You hit a mine!\nPress Undo to try again.")
-        elif self.game_manager.game_won:
+            
+            if messagebox.askyesno("Game Over", "You hit a mine!\nDo you want to request a rematch?" if self.network_manager else "You hit a mine!\nPress Undo to try again."):
+                if self.network_manager:
+                    self.network_manager.send_message({'type': 'REMATCH_REQUEST'})
+                    
+        elif self.game_manager.game_won and not self._played_win_sound:
+            self._played_win_sound = True
+            play_sound('win')
+            self.save_score()
             if self.network_manager:
                 self.network_manager.send_message({'type': 'OPPONENT_WON'})
-            messagebox.showinfo("Congratulations", f"You won in {self.timer_seconds} seconds!")
+                
+            if messagebox.askyesno("Congratulations", f"You won in {self.timer_seconds} seconds!\nDo you want to request a rematch?" if self.network_manager else f"You won in {self.timer_seconds} seconds!"):
+                if self.network_manager:
+                    self.network_manager.send_message({'type': 'REMATCH_REQUEST'})
             
     def on_left_click(self, x, y):
         """
         Event handler for left-clicking a cell.
         """
         if self.buttons[x][y].cget("bg") in ["lightgreen", "lightcoral", "lightyellow"]:
-            self.buttons[x][y].config(bg="SystemButtonFace")
+            self.buttons[x][y].config(bg=self.bg_color)
             
+        was_revealed = self.board.grid[x][y].is_revealed
         self.game_manager.handle_left_click(x, y)
+        if not was_revealed and self.board.grid[x][y].is_revealed and not self.board.grid[x][y].is_mine:
+            play_sound('click')
         self.update_gui()
         
     def on_right_click(self, x, y):
@@ -288,9 +406,28 @@ class MinesweeperGUI:
         Event handler for right-clicking a cell.
         """
         if self.buttons[x][y].cget("bg") in ["lightgreen", "lightcoral", "lightyellow"]:
-            self.buttons[x][y].config(bg="SystemButtonFace")
+            self.buttons[x][y].config(bg=self.bg_color)
             
+        was_flagged = self.board.grid[x][y].is_flagged
         self.game_manager.handle_right_click(x, y)
+        if self.board.grid[x][y].is_flagged != was_flagged:
+            play_sound('flag')
+        self.update_gui()
+
+    def on_middle_click(self, x, y):
+        """
+        Event handler for middle-clicking or double-clicking a cell (Chording).
+        """
+        if self.buttons[x][y].cget("bg") in ["lightgreen", "lightcoral", "lightyellow"]:
+            self.buttons[x][y].config(bg=self.bg_color)
+            
+        revealed_before = sum(1 for r in range(self.board.rows) for c in range(self.board.cols) if self.board.grid[r][c].is_revealed)
+        self.game_manager.handle_middle_click(x, y)
+        revealed_after = sum(1 for r in range(self.board.rows) for c in range(self.board.cols) if self.board.grid[r][c].is_revealed)
+        
+        if revealed_after > revealed_before and not self.game_manager.game_over:
+            play_sound('click')
+            
         self.update_gui()
         
     def undo_action(self):
@@ -300,7 +437,7 @@ class MinesweeperGUI:
         for r in range(self.board.rows):
             for c in range(self.board.cols):
                 if self.buttons[r][c].cget("bg") in ["lightgreen", "lightcoral", "lightyellow"]:
-                    self.buttons[r][c].config(bg="SystemButtonFace")
+                    self.buttons[r][c].config(bg=self.bg_color)
                     
         self.game_manager.undo()
         self.update_gui()
@@ -309,6 +446,10 @@ class MinesweeperGUI:
         """
         Starts the auto-solve loop.
         """
+        if self.network_manager:
+            messagebox.showinfo("Info", "Auto-solve is disabled in multiplayer mode.")
+            return
+            
         if not self.game_manager.game_over and not self.game_manager.game_won:
             self.auto_solve_loop()
 
@@ -344,6 +485,19 @@ class MinesweeperGUI:
                 messagebox.showinfo("Network", "The other player hit a mine! You can take your time to win.")
             elif event_type == 'ERROR':
                 messagebox.showerror("Network Error", event.get('msg'))
+            elif event_type == 'PROGRESS':
+                if hasattr(self, 'opp_progress_label'):
+                    self.opp_progress_label.config(text=f"Opponent: {event.get('progress', 0)}%")
+            elif event_type == 'REMATCH_REQUEST':
+                if messagebox.askyesno("Rematch", "Your opponent wants a rematch. Accept?"):
+                    self.network_manager.send_message({'type': 'REMATCH_ACCEPT'})
+                else:
+                    self.network_manager.send_message({'type': 'REMATCH_DECLINE'})
+            elif event_type == 'REMATCH_ACCEPT':
+                messagebox.showinfo("Rematch", "Opponent accepted the rematch. Starting...")
+                self.new_game(self.board.rows, self.board.cols, self.board.num_mines)
+            elif event_type == 'REMATCH_DECLINE':
+                messagebox.showinfo("Rematch", "Opponent declined the rematch.")
             elif event_type == 'CONNECTED':
                 if self.is_host:
                     import random

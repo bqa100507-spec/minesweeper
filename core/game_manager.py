@@ -89,6 +89,53 @@ class GameManager:
             self.save_state()
             cell.is_flagged = not cell.is_flagged
 
+    def handle_middle_click(self, x, y):
+        """
+        Handle a middle-click or double-click event (Chording).
+        Reveals adjacent cells if the number of surrounding flags matches the cell's number.
+        """
+        if self.game_over or self.game_won:
+            return
+            
+        cell = self.board.grid[x][y]
+        
+        if not cell.is_revealed or cell.adjacent_mines == 0:
+            return
+            
+        directions = [(-1, -1), (-1, 0), (-1, 1),
+                      (0, -1),           (0, 1),
+                      (1, -1),  (1, 0),  (1, 1)]
+                      
+        flag_count = 0
+        neighbors_to_reveal = []
+        
+        for dr, dc in directions:
+            nr, nc = x + dr, y + dc
+            if 0 <= nr < self.board.rows and 0 <= nc < self.board.cols:
+                neighbor = self.board.grid[nr][nc]
+                if neighbor.is_flagged:
+                    flag_count += 1
+                elif not neighbor.is_revealed:
+                    neighbors_to_reveal.append((nr, nc))
+                    
+        if flag_count == cell.adjacent_mines and neighbors_to_reveal:
+            self.save_state()
+            for nr, nc in neighbors_to_reveal:
+                if self.game_over:
+                    break
+                neighbor = self.board.grid[nr][nc]
+                if neighbor.is_mine:
+                    neighbor.is_revealed = True
+                    self.game_over = True
+                    self.reveal_all_mines()
+                else:
+                    if neighbor.adjacent_mines == 0:
+                        flood_fill_bfs(self.board.grid, nr, nc)
+                    else:
+                        neighbor.is_revealed = True
+            
+            self.check_win()
+
     def reveal_all_mines(self):
         """
         Reveal all mines on the board (typically after game over).
